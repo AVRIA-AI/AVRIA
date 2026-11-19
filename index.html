@@ -14,4 +14,34 @@ function render(){const s=load(),o=s.trades.filter(t=>t.status==='OPEN'),c=s.tra
 function openTrade(side){const s=load(),amount=Number($('amount').value),market=$('market').value,asset=$('asset').value;if(!Number.isFinite(amount)||amount<=0){$('message').textContent='Enter a valid investment amount.';return}if(amount>s.balance){$('message').textContent='Insufficient demo balance.';return}s.balance-=amount;s.trades.push({id:Date.now().toString(),market,asset,side,amount,status:'OPEN',pnl:0,created:new Date().toISOString()});save(s);$('message').textContent='✓ DEMO '+side+' position opened · '+money(amount);render()}
 function closeTrade(id){const s=load(),t=s.trades.find(x=>x.id===id);if(!t||t.status!=='OPEN')return;const raw=prompt('Enter simulated profit/loss in USD (example: 12 or -8):','0');if(raw===null)return;const pnl=Number(raw);if(!Number.isFinite(pnl)){alert('Enter a valid number.');return}if(pnl < -t.amount){alert('Demo loss cannot exceed the position investment.');return}t.pnl=pnl;t.status='CLOSED';t.closed=new Date().toISOString();s.balance+=t.amount+pnl;save(s);render()}
 $('buy').onclick=()=>openTrade('BUY');$('sell').onclick=()=>openTrade('SELL');$('tabTrade').onclick=()=>{$('tradePanel').classList.remove('hidden');$('historyPanel').classList.add('hidden');$('tabTrade').classList.add('primary');$('tabHistory').classList.remove('primary')};$('tabHistory').onclick=()=>{$('tradePanel').classList.add('hidden');$('historyPanel').classList.remove('hidden');$('tabHistory').classList.add('primary');$('tabTrade').classList.remove('primary');render()};$('market').onchange=()=>{const m=$('market').value,a=m==='Cryptocurrency'?['BTC / USDT','ETH / USDT','SOL / USDT','XRP / USDT']:m==='Forex'?['EUR / USD','GBP / USD','USD / JPY']:['Apple (AAPL)','NASDAQ 100','Tesla (TSLA)'];$('asset').innerHTML=a.map(x=>'<option>'+x+'</option>').join('')};render();
-</script></body></html>
+</script> 
+<script>
+const quoteBox=document.createElement('div');
+quoteBox.className='status';
+quoteBox.style.marginTop='12px';
+quoteBox.textContent='Loading live crypto prices…';
+document.getElementById('amount').parentElement.after(quoteBox);
+async function updateAvriaPrice(){
+ const market=document.getElementById('market').value;
+ const asset=document.getElementById('asset').value;
+ if(market!=='Cryptocurrency'){
+  quoteBox.textContent='Live quotes are not connected for this market yet.';
+  return;
+ }
+ const symbol=asset.split(' / ')[0]+'USDT';
+ try{
+  const response=await fetch('https://api.binance.com/api/v3/ticker/price?symbol='+symbol);
+  if(!response.ok) throw new Error();
+  const data=await response.json();
+  quoteBox.textContent=symbol+' · $'+Number(data.price).toLocaleString('en-US')+' · Live indicative price';
+ }catch(error){
+  quoteBox.textContent='Live price temporarily unavailable.';
+ }
+}
+
+document.getElementById('asset').addEventListener('change',updateAvriaPrice);
+document.getElementById('market').addEventListener('change',updateAvriaPrice);
+updateAvriaPrice();
+setInterval(updateAvriaPrice,15000);
+</script>
+</body></html>
