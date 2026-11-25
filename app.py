@@ -1,8 +1,12 @@
+import hashlib
+import hmac
+import json
 import os
 import sqlite3
+import time
+from urllib.parse import parse_qsl
 from contextlib import closing
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
@@ -47,11 +51,46 @@ def startup():
     init_db()
 
 
+def verify_telegram_init_data(init_data: str) -> str:
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if not bot_token:
+        raise HTTPException(503, "Telegram authentication is not configured")
+
+    try:
+        pairs = parse_qsl(init_data, keep_blank_values=True, strict_parsing=True)
+        data = dict(pairs)
+        if len(data) != len(pairs) or "hash" not in data or "auth_date" not in data:
+            raise ValueError("Invalid initData fields")
+
+        received_hash = data.pop("hash")
+        check_string = "\\n".join(f"{key}={value}" for key, value in sorted(data.items()))
+        secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+        expected_hash = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected_hash, received_hash):
+            raise ValueError("Invalid initData signature")
+
+        auth_date = int(data["auth_date"])
+        now = int(time.time())
+        if auth_date > now + 30 or now - auth_date > 86400:
+            raise ValueError("Expired initData")
+
+        user = json.loads(data["user"])
+        user_id = user.get("id")
+        if not isinstance(user_id, int) or user_id <= 0:
+            raise ValueError("Invalid Telegram user")
+        return str(user_id)
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        raise HTTPException(401, "Invalid or expired Telegram authentication")
+
+
 async def get_user_id(request: Request) -> str:
-    # Development mode is for local testing only. Production must verify Telegram initData.
+    # Explicit local-only bypass. Never enable this on a public deployment.
     if DEV_MODE:
         return request.headers.get("X-Demo-User", "demo-user")
-    raise HTTPException(401, "Telegram Mini App authentication is not configured")
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    if not init_data:
+        raise HTTPException(401, "Telegram Mini App authentication is required")
+    return verify_telegram_init_data(init_data)
 
 
 def ensure_account(conn, user_id: str):
