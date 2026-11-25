@@ -13,10 +13,12 @@ from pydantic import BaseModel, Field
 load_dotenv()
 BASE = Path(__file__).resolve().parent
 DB_PATH = BASE / "avria.sqlite3"
-DEV_MODE = os.getenv("DEV_MODE", "true").lower() == "true"
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
 
 app = FastAPI(title="AVRIA AI Trading API", version="0.2.0")
-app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
+STATIC_DIR = BASE / "static"
+if STATIC_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 def db():
@@ -69,7 +71,7 @@ class CloseTradeRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return FileResponse(BASE / "static" / "index.html")
+    return FileResponse(BASE / "index.html")
 
 
 @app.get("/api/account")
